@@ -2,38 +2,64 @@ name: Build APP
 
 on:
   push:
-    branches: [ "master", "old-android" ]
+    branches: [ "dev", "master", "old-android" ]  # 添加了 dev 分支
   pull_request:
-    branches: [ "master" ]
+    branches: [ "dev", "master" ]  # 添加了 dev 分支
+  workflow_dispatch:  # 允许手动触发
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
 
     steps:
+      # 1. 检出代码（含子模块）
       - uses: actions/checkout@v4
         with:
           submodules: 'recursive'
+      
+      # 2. 替换为自定义核心（新增）
+      - name: 替换为自定义 ZeroTier 核心
+        run: |
+          cd externals/core
+          # 更换为你的仓库地址
+          git remote set-url origin https://github.com/ligusx/ZeroTierOne1.14.2.git
+          git fetch --all
+          # 获取默认分支（dev）
+          DEFAULT_BRANCH=$(git remote show origin | grep 'HEAD branch' | cut -d' ' -f5)
+          echo "检测到默认分支: $DEFAULT_BRANCH"
+          git checkout $DEFAULT_BRANCH
+          git pull origin $DEFAULT_BRANCH
+          cd ../..
+          git add externals/core
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore: 切换核心到 ligusx/ZeroTierOne1.14.2 (dev)" || echo "没有新的变更需要提交"
+      
+      # 3. 使用 Android Build Action 编译
       - uses: sparkfabrik/android-build-action@v1.5.0
         with:
           project-path: .
           output-path: app-debug.apk
           fastlane-env: "debug"
           ruby-version: "3.3.0"
-      - uses: actions/upload-artifact@v3
+      
+      # 4. 上传 Debug APK（PR 时）
+      - uses: actions/upload-artifact@v4
         if: github.event_name == 'pull_request'
         name: Upload app APK
         with:
           name: App bundle
           path: app-debug.apk
-      # https://github.com/r0adkll/sign-android-release/issues/84#issuecomment-1889636075
+      
+      # 5. 设置构建工具版本
       - name: Setup build tool version variable
         shell: bash
         run: |
           BUILD_TOOL_VERSION=$(ls /usr/local/lib/android/sdk/build-tools/ | tail -n 1)
           echo "BUILD_TOOL_VERSION=$BUILD_TOOL_VERSION" >> $GITHUB_ENV
-          echo Last build tool version is: $BUILD_TOOL_VERSION
+          echo "Last build tool version is: $BUILD_TOOL_VERSION"
+      
+      # 6. 签名 APK（非 PR 时）
       - uses: r0adkll/sign-android-release@v1
         if: github.event_name != 'pull_request'
         name: Sign app APK
@@ -45,6 +71,8 @@ jobs:
           keyStorePassword: ${{ secrets.KEY_STORE_PASSWORD }}
         env:
           BUILD_TOOLS_VERSION: ${{ env.BUILD_TOOL_VERSION }}
+      
+      # 7. 上传签名后的 APK（非 PR 时）
       - uses: actions/upload-artifact@v4
         if: github.event_name != 'pull_request'
         name: Upload signed app APK
