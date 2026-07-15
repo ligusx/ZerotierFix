@@ -17,7 +17,6 @@ jobs:
       with:
         # 关键：需要递归检出子模块，但后面我们会覆盖它
         submodules: 'recursive'
-        # 注意：这里会先拉取 kaaass/ZerotierFix 配置的子模块
 
     # 2. 用你的核心替换子模块
     - name: 替换为自定义 ZeroTier 核心
@@ -28,19 +27,22 @@ jobs:
         git remote set-url origin https://github.com/ligusx/ZeroTierOne1.14.2.git
         # 拉取你的仓库内容
         git fetch --all
-        # 强制切换到你的主分支（或你想要的任意分支/标签）
-        git checkout dev
-        # 确保子模块指向你仓库的最新提交
-        git pull origin dev
+        # 获取仓库的默认分支（通常是 main 或 master）
+        DEFAULT_BRANCH=$(git remote show origin | grep 'HEAD branch' | cut -d' ' -f5)
+        echo "检测到默认分支: $DEFAULT_BRANCH"
+        # 切换到检测到的默认分支
+        git checkout $DEFAULT_BRANCH
+        # 拉取最新代码
+        git pull origin $DEFAULT_BRANCH
         # 返回项目根目录
         cd ../..
         # 暂存子模块的变更
         git add externals/core
-        # 配置 Git 用户信息以便提交（如果后续需要提交）
+        # 配置 Git 用户信息以便提交
         git config user.name "github-actions[bot]"
         git config user.email "github-actions[bot]@users.noreply.github.com"
-        # 提交变更（如果存在）
-        git commit -m "chore: 切换核心到 ligusx/ZeroTierOne1.14.2" || echo "没有新的变更需要提交"
+        # 提交变更
+        git commit -m "chore: 切换核心到 ligusx/ZeroTierOne1.14.2 (默认分支)" || echo "没有新的变更需要提交"
 
     # 3. 设置 Java 环境
     - name: 设置 JDK 11
